@@ -10,6 +10,8 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
  */
 class TeStat_Plugin implements Typecho_Plugin_Interface
 {
+	public static $info = array();
+	public static $mem = array();
     /**
      * 激活插件方法,如果激活失败,直接抛出异常
      * 
@@ -33,6 +35,9 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
         Typecho_Plugin::factory('Widget_Archive')->select = array('TeStat_Plugin', 'selectHandle');
 		//添加动作
 		Helper::addAction('likes', 'TeStat_Action');
+		
+		Typecho_Plugin::factory('index.php')->begin = array('TeStat_Plugin', 'setBegin');
+        Typecho_Plugin::factory('index.php')->end = array('TeStat_Plugin', 'setEnd');
 		
     }
     
@@ -69,6 +74,12 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
 		$delFields = new Typecho_Widget_Helper_Form_Element_Radio('delFields', 
             array(0=>_t('保留数据'),1=>_t('删除数据'),), '0', _t('卸载设置'),_t('卸载插件后数据是否保留'));
         $form->addInput($delFields);
+		$allow_stat = new Typecho_Widget_Helper_Form_Element_Radio('allow_stat', 
+            array(0=>_t('关闭'),1=>_t('开启'),), '1', _t('统计运行信息'),_t('是否开启运行信息统计'));
+        $form->addInput($allow_stat);
+		$allow_stat_mem = new Typecho_Widget_Helper_Form_Element_Radio('allow_stat_mem', 
+            array(0=>_t('关闭'),1=>_t('开启'),), '1', _t('统计内存开销'),_t('是否开启内存开销统计'));
+        $form->addInput($allow_stat_mem);
 	}
     
     /**
@@ -80,6 +91,58 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
      */
     public static function personalConfig(Typecho_Widget_Helper_Form $form){}
     
+	//记录开始执行的参数
+	public static function setBegin(){
+		$options = Typecho_Widget::widget('Widget_Options')->plugin('TeStat');
+		
+		if(!$options->allow_stat) return;
+		
+		self::$info['begin'] = microtime(TRUE);
+		
+		if($options->allow_stat_mem)
+			self::$mem['begin'] =  memory_get_usage();
+	}
+	//记录执行结束的参数
+	public static function setEnd(){
+		$options = Typecho_Widget::widget('Widget_Options')->plugin('TeStat');
+		
+		if(!$options->allow_stat) return;
+		
+		if(isset(self::$info['end'])) return;
+		
+		self::$info['end'] = microtime(TRUE);
+		
+		if($options->allow_stat_mem)
+			self::$mem['end'] =  memory_get_usage();
+		
+	}
+	//显示记录的各种统计项
+	public static function runtime($format='吞吐率:{rate},运行时间:{runtime},内存开销:{mem},加载文件:{files}'){
+		$options = Typecho_Widget::widget('Widget_Options');
+		if(!isset($options->plugins['activated']['TeStat'])) return;
+
+		$options = $options->plugin('TeStat');
+		if(!$options->allow_stat) return;
+		
+		if(isset(self::$info['begin']) && !isset(self::$info['end'])){
+			self::setEnd();
+		}
+		$stat = array(
+			'runtime'=>'未统计',
+			'mem'=>'未统计',
+			'files'=>count(get_included_files()),
+			'rate'=>'未统计',
+		);
+		
+		if(isset(self::$info['begin']) && isset(self::$info['end'])){
+			$stat['runtime'] = number_format(self::$info['end']-self::$info['begin'],4).' s';
+			$stat['rate'] = number_format(1/(self::$info['end']-self::$info['begin']),2).' req/s';
+		}
+		if(isset(self::$mem['begin']) && isset(self::$mem['end'])){
+			$stat['mem'] = number_format((self::$mem['end']-self::$mem['begin'])/1024).' kb';
+		}
+		echo str_replace(array('{runtime}','{mem}','{files}','{rate}'),$stat,$format);
+	}
     /**
      * 增加浏览量
      * @params Widget_Archive   $archive
