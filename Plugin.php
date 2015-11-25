@@ -5,7 +5,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) exit;
  * 
  * @package TeStat
  * @author 绛木子
- * @version 1.0.0
+ * @version 1.1
  * @link http://lixianhua.com
  */
 class TeStat_Plugin implements Typecho_Plugin_Interface
@@ -35,6 +35,9 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
         Typecho_Plugin::factory('Widget_Archive')->select = array('TeStat_Plugin', 'selectHandle');
 		//添加动作
 		Helper::addAction('likes', 'TeStat_Action');
+		
+		Typecho_Plugin::factory('Widget_Archive')->header = array('TeStat_Plugin','insertCss');
+		Typecho_Plugin::factory('Widget_Archive')->footer = array('TeStat_Plugin','insertJs');
 		
 		Typecho_Plugin::factory('index.php')->begin = array('TeStat_Plugin', 'setBegin');
         Typecho_Plugin::factory('index.php')->end = array('TeStat_Plugin', 'setEnd');
@@ -70,7 +73,7 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
      * @return void
      */
     public static function config(Typecho_Widget_Helper_Form $form)
-	{
+	{	
 		$delFields = new Typecho_Widget_Helper_Form_Element_Radio('delFields', 
             array(0=>_t('保留数据'),1=>_t('删除数据'),), '0', _t('卸载设置'),_t('卸载插件后数据是否保留'));
         $form->addInput($delFields);
@@ -166,6 +169,47 @@ class TeStat_Plugin implements Typecho_Plugin_Interface
             }
         }
     }
+	public static function insertCss($header,$widget){
+		$action = Typecho_Common::url('/action/',Helper::options()->index);
+		echo '<style type="text/css">.testat-dialog{position:fixed;top:100px;left:50%;padding:10px;background-color:#fff;display:none;-webkit-border-radius: 3px;-moz-border-radius: 3px;border-radius: 3px;z-index:1024;}
+.testat-dialog.error{background-color:#f40;color:#fff;}
+.testat-dialog.success{background-color:#24AA42;color:#fff;}</style><script type="text/javascript">window.action="'.$action.'";</script>';
+	}
+	public static function insertJs($widget){
+		$script = <<<EOT
+<script type="text/javascript">
+$(function(){
+	$('.btn-like').click(function(e){
+		e.stopPropagation();
+		e.preventDefault();
+		var that = $(this),num = $(this).data('num'), cid = $(this).data('cid'),numEl = that.find('.post-likes-num');
+		if(cid===undefined) return false;
+		$.get(window.action+'likes?cid='+cid).success(function(rs){
+			if(rs.status==1){
+				if(numEl.length>0){
+					numEl.text(num+1);
+				}
+				testatAlert(rs.msg===undefined ? '已成功为该文章点赞!' : rs.msg);
+			}else{
+				testatAlert(rs.msg===undefined ? '操作出错!' : rs.msg,'err');
+			}
+		});
+	});
+});
+function testatAlert(msg,type,time){
+	type = type === undefined ? 'success' : 'error';
+	time = time === undefined ? (type=='success' ? 1500 : 3000) : time;
+	var html = '<div class="testat-dialog '+type+'">'+msg+'</div>';
+	$(html).appendTo($('body')).fadeIn(300,function(){
+		setTimeout(function(){
+			$('body > .testat-dialog').remove();
+		},time);
+	});
+}
+</script>
+EOT;
+		echo $script;
+	}
     //cleanAttribute('fields')清除查询字段，select * 
     public static function selectHandle($archive){
         $user = Typecho_Widget::widget('Widget_User');
